@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 from operator import itemgetter
-#from odoo import fields as odoo_fields, http, tools, _, SUPERUSER_ID
+from odoo import fields as odoo_fields, http, tools, _, SUPERUSER_ID
 from odoo import http, fields, _
 from odoo.exceptions import AccessError, MissingError
 from odoo.http import content_disposition, request
