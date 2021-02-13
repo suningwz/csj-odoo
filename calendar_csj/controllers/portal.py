@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 from operator import itemgetter
+from odoo import fields as odoo_fields, http, tools, _, SUPERUSER_ID
 from odoo import http, fields, _
 from odoo.exceptions import AccessError, MissingError
 from odoo.http import content_disposition, request
@@ -37,7 +38,6 @@ class CustomerPortal(CustomerPortal):
             domain += [('partner_id', '=', judged_id.id)]
 
         values['appointment_count'] = request.env['calendar.appointment'].sudo().search_count(domain)
-        
         return values
 
     # ------------------------------------------------------------
@@ -60,6 +60,24 @@ class CustomerPortal(CustomerPortal):
         }
         return self._get_page_view_values(appointment, access_token, values, 'my_appointment_history', False, **kwargs)
 
+    def _get_archive_groups(self, model, domain=None, fields=None, groupby="create_date", order="create_date desc"):
+        if not model:
+            return []
+        if domain is None:
+            domain = []
+        if fields is None:
+            fields = ['name', 'create_date']
+        groups = []
+        for group in request.env[model].sudo()._read_group_raw(domain, fields=fields, groupby=groupby, orderby=order):
+            dates, label = group[groupby]
+            date_begin, date_end = dates.split('/')
+            groups.append({
+                'date_begin': odoo_fields.Date.to_string(odoo_fields.Date.from_string(date_begin)),
+                'date_end': odoo_fields.Date.to_string(odoo_fields.Date.from_string(date_end)),
+                'name': label,
+                'item_count': group[groupby + '_count']
+            })
+        return groups
 
     @http.route(['/my/appointments', '/my/appointments/page/<int:page>'], type='http', auth="user", website=True)
     def portal_my_appointments(self, page=1, date_begin=None, date_end=None, sortby=None, filterby=None, search=None, search_in='appointment_code', groupby='none', export='none', **kw):
@@ -497,11 +515,11 @@ class CustomerPortal(CustomerPortal):
             sortby = 'date'
         order = searchbar_sortings[sortby]['order']
 
-        """
+        
         archive_groups = self._get_archive_groups('calendar.appointment')
         if date_begin and date_end:
             domain += [('calendar_datetime', '>', date_begin), ('calendar_datetime', '<=', date_end)]
-        """
+        
 
         # search
         if search and search_in:
@@ -759,7 +777,7 @@ class CustomerPortal(CustomerPortal):
             'grouped_appointments': grouped_appointments,
             'total': appointment_count,
             'page_name': 'appointment',
-            #'archive_groups': archive_groups,
+            'archive_groups': archive_groups,
             'default_url': '/public',
             'pager': pager,
             'searchbar_sortings': searchbar_sortings,
@@ -838,7 +856,7 @@ class CustomerPortal(CustomerPortal):
             'appointment_close_user_id': request.env.user.id,
         });
         return request.redirect('/my/appointment/' + str(appointment_id.id))
-
+    
     @http.route(['/my/appointment/<model("calendar.appointment"):appointment_id>/update/state/open'], type='http', auth="user", website=True)
     def portal_my_appointment_assist_open(self, appointment_id=None, access_token=None, **kw):
         appointment_id.write({
@@ -847,7 +865,7 @@ class CustomerPortal(CustomerPortal):
             'appointment_close_user_id': request.env.user.id,
         });
         return request.redirect('/my/appointment/' + str(appointment_id.id))
-
+    
     @http.route(['/my/appointment/<model("calendar.appointment"):appointment_id>/update/state/draft'], type='http', auth="user", website=True)
     def portal_my_appointment_assist_draft(self, appointment_id=None, access_token=None, **kw):
         appointment_id.write({
@@ -965,6 +983,7 @@ class CustomerPortal(CustomerPortal):
 
         return request.redirect('/my/appointment/' + str(appointment_id.id))
 
+    
     @http.route([
         '/private/videos'
     ], type='http', auth="user", website=True)
@@ -982,7 +1001,8 @@ class CustomerPortal(CustomerPortal):
             'url_calltech': 'https://apigestionaudiencias3.ramajudicial.gov.co/' + str(sid) + '/' + str(uid),
         }
         return request.render("calendar_csj.portal_my_videos", values)
-
+    
+    
     @http.route([
         '/public/videos'
     ], type='http', auth="public", website=True)
@@ -1000,26 +1020,4 @@ class CustomerPortal(CustomerPortal):
             #'url_calltech': 'https://streamcuc.web.app/public',
             'url_calltech': 'https://apigestionaudiencias3.ramajudicial.gov.co/public',
         }
-        return request.render("calendar_csj.portal_public_videos", values)
-
-    @http.route([
-        '/data/recordings'
-    ], type='http', auth="public", website=True)
-    #def portal_my_videos(self, appointment_id=None, access_token=None, **kw):
-    def portal_public_videos(self, appointment_id=None, access_token=None, **kw):
-        _logger.error(request.httprequest.cookies.get('session_id'))
-        sid = request.httprequest.cookies.get('session_id')
-        uid = request.env.user.id
-        if not sid:
-            raise werkzeug.exceptions.NotFound()
-
-        if uid and sid:
-            _logger.error('privado')
-            values = {
-                'url_calltech': 'https://apigestionaudiencias3.ramajudicial.gov.co/' + str(sid) + '/' + str(uid),
-            }
-        else:
-            values = {
-                'url_calltech': 'https://apigestionaudiencias3.ramajudicial.gov.co/public',
-            }
         return request.render("calendar_csj.portal_public_videos", values)
